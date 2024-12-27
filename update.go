@@ -50,6 +50,9 @@ func AutoUpdate(packageName string) {
 		slog.Info("actual", slog.String("package", packageName), slog.String("version", formattedCurrentVersion))
 		return
 	}
+	if !semver.IsValid(formattedCurrentVersion) {
+		formattedCurrentVersion = "Unknown"
+	}
 	slog.Info("try update", slog.String("current-version", formattedCurrentVersion), slog.String("last-version", lastVersion))
 	installInstruction := fmt.Sprintf("%s@%s", packageName, lastVersion)
 	command := fmt.Sprintf("go install %s", installInstruction)
