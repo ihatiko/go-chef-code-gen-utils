@@ -12,7 +12,15 @@ import (
 	"strings"
 )
 
-func AutoUpdate(packageName string) {
+type Updater struct {
+	proxies []string
+}
+
+func NewUpdater(proxies []string) *Updater {
+	return &Updater{proxies: proxies}
+}
+
+func (u *Updater) AutoUpdate(packageName string) {
 	splittedPackage := strings.Split(packageName, "/")
 	packageUrl := splittedPackage[len(splittedPackage)-1]
 	composer := NewExecutor()
@@ -20,7 +28,7 @@ func AutoUpdate(packageName string) {
 	if err != nil {
 		slog.Info("does not found module", slog.String("module", packageName))
 		slog.Info("try installing module", slog.String("module", packageName))
-		lastVersion, err := getLastVersion(packageName)
+		lastVersion, err := u.GetLastVersion(packageName)
 		if err != nil {
 			slog.Error("Failed to get last version", slog.Any("error", err))
 			return
@@ -40,7 +48,7 @@ func AutoUpdate(packageName string) {
 		slog.Error("Failed to execute composer", slog.Any("error", err), slog.String("package", packageUrl))
 		return
 	}
-	lastVersion, err := getLastVersion(packageName)
+	lastVersion, err := u.GetLastVersion(packageName)
 	if err != nil {
 		slog.Error("Failed to get last version", slog.Any("error", err))
 		return
@@ -65,27 +73,28 @@ func AutoUpdate(packageName string) {
 	}
 }
 
-func getLastVersion(packageName string) (string, error) {
-	fullPathName := fmt.Sprintf("https://proxy.golang.org/%s/@v/list", packageName)
-	response, err := http.Get(fullPathName)
-	if err != nil || response.StatusCode != 200 {
-		slog.Error("Error fetching latest version of package", slog.Any("error", err))
-		return "", err
-	}
+func (u *Updater) GetLastVersion(packageName string) (string, error) {
+	for _, proxy := range u.proxies {
+		fullPathName := fmt.Sprintf("%s/%s/@v/list", proxy, packageName)
+		response, err := http.Get(fullPathName)
+		if err != nil || response.StatusCode != 200 {
+			continue
+		}
 
-	reader := bufio.NewReader(response.Body)
+		reader := bufio.NewReader(response.Body)
 
-	bytes, err := reader.ReadBytes(0)
-	if err != nil && err != io.EOF {
-		slog.Error("Error reading response", slog.Any("error", err))
-		return "", err
-	}
-	if len(bytes) == 0 {
-		return "", errors.New("empty response")
-	}
-	versions := strings.Split(string(bytes), "\n")
+		bytes, err := reader.ReadBytes(0)
+		if err != nil && err != io.EOF {
+			continue
+		}
+		if len(bytes) == 0 {
+			continue
+		}
+		versions := strings.Split(string(bytes), "\n")
 
-	semver.Sort(versions)
-	lastVersion := versions[len(versions)-1]
-	return lastVersion, nil
+		semver.Sort(versions)
+		lastVersion := versions[len(versions)-1]
+		return lastVersion, nil
+	}
+	return "", errors.New("no version found")
 }
