@@ -55,7 +55,7 @@ func (u *Updater) AutoUpdate(packageName string) {
 	}
 	formattedCurrentVersion := strings.ReplaceAll(currentVersion.String(), "\n", "")
 	if !semver.IsValid(formattedCurrentVersion) {
-		formattedCurrentVersion = "Unknown"
+		formattedCurrentVersion = "v0.0.0-dev"
 	}
 	if semver.Compare(lastVersion, formattedCurrentVersion) == -1 {
 		slog.Info("actual", slog.String("package", packageName), slog.String("version", formattedCurrentVersion))
