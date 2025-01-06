@@ -13,10 +13,12 @@ import (
 	"text/template"
 )
 
+type MR func(a, b []byte) []byte
 type Builder struct {
 	Prefix    string
 	structure embed.FS
 	MergeMode bool
+	MergeFn   map[string]MR
 }
 
 func NewBuilder(prefix string, structure embed.FS, mergeMode bool) *Builder {
@@ -114,16 +116,43 @@ func (b *Builder) buildFile(secondPath string, folder string, obj any) {
 	if folder == filePath {
 		return
 	}
-
-	f, err := os.Create(filePath)
-	if err != nil {
-		slog.Error("Error creating file", slog.Any("error", err), slog.String("secondPath", secondPath))
-		os.Exit(1)
-	}
-	err = t.ExecuteTemplate(f, "", obj)
+	//TODO rewrite
+	builder := bytes.NewBuffer([]byte{})
+	err = t.ExecuteTemplate(builder, "", obj)
 	if err != nil {
 		slog.Error("Error ExecuteTemplate", slog.Any("error", err), slog.String("secondPath", secondPath))
 		os.Exit(1)
+	}
+	bt := builder.Bytes()
+	if b.MergeMode {
+		file, err := os.ReadFile(filePath)
+		if errors.Is(err, fs.ErrNotExist) {
+			slog.Error("Error reading file", slog.Any("error", err), slog.String("secondPath", secondPath))
+		} else {
+			ext := filepath.Ext(filePath)
+			if val, ok := b.MergeFn[ext]; ok {
+				bt = val(bt, file)
+			} else {
+				if bytes.Contains(file, bt) {
+					return
+				}
+				file = append(file, "\n"...)
+				file = append(file, bt...)
+				file = append(file, "\n"...)
+				bt = file
+			}
+		}
+	} else {
+		_, err = os.Create(filePath)
+		if err != nil {
+			slog.Error("Error creating file", slog.Any("error", err), slog.String("secondPath", secondPath))
+			os.Exit(1)
+		}
+	}
+	err = os.WriteFile(filePath, bt, os.ModePerm)
+	if err != nil {
+		slog.Error("Write string to file", slog.Any("error", err), slog.String("secondPath", secondPath))
+		return
 	}
 }
 func (b *Builder) RewritePath(folder string, obj any) string {
