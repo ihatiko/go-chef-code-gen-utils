@@ -16,10 +16,11 @@ import (
 type Builder struct {
 	Prefix    string
 	structure embed.FS
+	MergeMode bool
 }
 
-func NewBuilder(prefix string, structure embed.FS) *Builder {
-	return &Builder{Prefix: prefix, structure: structure}
+func NewBuilder(prefix string, structure embed.FS, mergeMode bool) *Builder {
+	return &Builder{Prefix: prefix, structure: structure, MergeMode: mergeMode}
 }
 func (b *Builder) Build(prefix, destination string, obj any) {
 	b.process(prefix, destination, obj)
@@ -57,14 +58,14 @@ func (b *Builder) process(prefix, destination string, obj any) {
 func (b *Builder) CleanEmptyDir(destination string) {
 	dir, err := os.ReadDir(destination)
 	if err != nil {
-		slog.Error(err.Error())
-		panic("failed to clean empty directory")
+		slog.Error("Error reading directory", slog.Any("error", err), slog.String("destination", destination))
+		os.Exit(1)
 	}
 	if len(dir) == 0 {
 		err = os.Remove(destination)
 		if err != nil {
-			slog.Error(err.Error())
-			panic("failed to clean empty directory")
+			slog.Error("Error removing directory", slog.Any("error", err), slog.String("destination", destination))
+			os.Exit(1)
 		}
 	}
 }
@@ -90,13 +91,13 @@ func (b *Builder) buildFile(secondPath string, folder string, obj any) {
 	secondPath = b.OSSlash(secondPath)
 	rF, err := b.structure.ReadFile(secondPath)
 	if err != nil {
-		slog.Error(err.Error())
-		panic("failed to read file")
+		slog.Error("Error reading file", slog.Any("error", err), slog.String("secondPath", secondPath))
+		os.Exit(1)
 	}
 	t, err := template.New("").Parse(string(rF))
 	if err != nil {
-		slog.Error(err.Error())
-		panic("failed to parse project-template")
+		slog.Error("Error parsing template", slog.Any("error", err), slog.String("secondPath", secondPath))
+		os.Exit(1)
 	}
 	if strings.HasSuffix(secondPath, "}}") {
 		secondPath = b.RewritePath(secondPath, obj)
@@ -116,26 +117,26 @@ func (b *Builder) buildFile(secondPath string, folder string, obj any) {
 
 	f, err := os.Create(filePath)
 	if err != nil {
-		slog.Error(err.Error())
-		panic("failed to create file")
+		slog.Error("Error creating file", slog.Any("error", err), slog.String("secondPath", secondPath))
+		os.Exit(1)
 	}
 	err = t.ExecuteTemplate(f, "", obj)
 	if err != nil {
-		slog.Error(err.Error())
-		panic("failed to execute project-template")
+		slog.Error("Error ExecuteTemplate", slog.Any("error", err), slog.String("secondPath", secondPath))
+		os.Exit(1)
 	}
 }
 func (b *Builder) RewritePath(folder string, obj any) string {
 	t, err := template.New("").Parse(folder)
 	if err != nil {
-		slog.Error(err.Error())
-		panic("failed to parse project-template")
+		slog.Error("Error parsing template", slog.Any("error", err), slog.String("folder", folder))
+		os.Exit(1)
 	}
 	buffer := bytes.NewBufferString("")
 	err = t.ExecuteTemplate(buffer, "", obj)
 	if err != nil {
-		slog.Error(err.Error())
-		panic("failed to execute project-template")
+		slog.Error("Error ExecuteTemplate", slog.Any("error", err), slog.String("folder", folder))
+		os.Exit(1)
 	}
 	return strings.ReplaceAll(buffer.String(), " ", "")
 }
@@ -149,8 +150,8 @@ func Mkdir(path string) {
 	if errors.Is(err, fs.ErrNotExist) {
 		err := os.Mkdir(path, os.ModePerm)
 		if err != nil {
-			slog.Error(err.Error())
-			panic("failed to create directory")
+			slog.Error("Error creating directory", slog.Any("error", err), slog.String("path", path))
+			os.Exit(1)
 		}
 	}
 }
