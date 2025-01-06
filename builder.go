@@ -13,7 +13,7 @@ import (
 	"text/template"
 )
 
-type MR func(a, b []byte) []byte
+type MR func(fileName string, newFile, oldFile []byte) []byte
 type Builder struct {
 	Prefix    string
 	structure embed.FS
@@ -21,8 +21,11 @@ type Builder struct {
 	MergeFn   map[string]MR
 }
 
+func (b *Builder) AddMergeFn(mask string, fn MR) {
+	b.MergeFn[mask] = fn
+}
 func NewBuilder(prefix string, structure embed.FS, mergeMode bool) *Builder {
-	return &Builder{Prefix: prefix, structure: structure, MergeMode: mergeMode}
+	return &Builder{Prefix: prefix, structure: structure, MergeMode: mergeMode, MergeFn: make(map[string]MR)}
 }
 func (b *Builder) Build(prefix, destination string, obj any) {
 	b.process(prefix, destination, obj)
@@ -131,7 +134,7 @@ func (b *Builder) buildFile(secondPath string, folder string, obj any) {
 		} else {
 			ext := filepath.Ext(filePath)
 			if val, ok := b.MergeFn[ext]; ok {
-				bt = val(bt, file)
+				bt = val(filePath, bt, file)
 			} else {
 				if bytes.Contains(file, bt) {
 					return
