@@ -29,5 +29,6 @@ func GetProjectName(projectPath string) string {
 	if len(splittedFile) == 0 {
 		panic(fmt.Sprintf("empty go.mod file in folder %s", projectPath))
 	}
-	return strings.Replace(splittedFile[0], "module ", "", 1)
+	fm := strings.Replace(splittedFile[0], "module ", "", 1)
+	return strings.Replace(fm, "\r", "", 1)
 }
