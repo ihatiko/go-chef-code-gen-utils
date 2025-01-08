@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"embed"
 	"errors"
+	"fmt"
 	"io/fs"
 	"log"
 	"log/slog"
@@ -40,7 +41,10 @@ func (b *Builder) process(prefix, destination string, obj any) {
 		secondPath := filepath.Join(prefix, fl.Name())
 		if fl.IsDir() {
 			directory := b.cleanPath(secondPath)
-			newDirectory := b.RewritePath(directory, obj)
+			newDirectory, state := b.RewritePath(directory, obj)
+			if state {
+				continue
+			}
 			if strings.HasSuffix(newDirectory, b.OSSlash("/")) {
 				continue
 			}
@@ -92,8 +96,8 @@ func (b *Builder) OSSlash(path string) string {
 	return path
 }
 
-func (b *Builder) buildFile(secondPath string, folder string, obj any) {
-	secondPath = b.OSSlash(secondPath)
+func (b *Builder) buildFile(sPath string, folder string, obj any) {
+	secondPath := b.OSSlash(sPath)
 	rF, err := b.structure.ReadFile(secondPath)
 	if err != nil {
 		slog.Error("Error reading file", slog.Any("error", err), slog.String("secondPath", secondPath))
@@ -104,13 +108,18 @@ func (b *Builder) buildFile(secondPath string, folder string, obj any) {
 		slog.Error("Error parsing template", slog.Any("error", err), slog.String("secondPath", secondPath))
 		os.Exit(1)
 	}
+	var state bool
 	if strings.HasSuffix(secondPath, "}}") {
-		secondPath = b.RewritePath(secondPath, obj)
+		secondPath, state = b.RewritePath(secondPath, obj)
+		if state {
+			return
+		}
 	}
 	parsedPath, _ := strings.CutSuffix(secondPath, ".tmpl")
+	fmt.Println(parsedPath)
 	parsedPath = b.cleanPath(parsedPath)
 
-	newPath := b.RewritePath(parsedPath, obj)
+	newPath, state := b.RewritePath(parsedPath, obj)
 	filePath := filepath.Join(
 		folder,
 		newPath,
@@ -156,19 +165,31 @@ func (b *Builder) buildFile(secondPath string, folder string, obj any) {
 		return
 	}
 }
-func (b *Builder) RewritePath(folder string, obj any) string {
-	t, err := template.New("").Parse(folder)
-	if err != nil {
-		slog.Error("Error parsing template", slog.Any("error", err), slog.String("folder", folder))
-		os.Exit(1)
+func (b *Builder) RewritePath(folder string, obj any) (string, bool) {
+	//TODO check on mac
+	fragments := strings.Split(folder, "/")
+	for index, val := range fragments {
+		if index == 0 && val == "" {
+			continue
+		}
+		t, err := template.New("").Parse(val)
+		if err != nil {
+			slog.Error("Error parsing template", slog.Any("error", err), slog.String("folder", folder))
+			os.Exit(1)
+		}
+		buffer := bytes.NewBufferString("")
+		err = t.ExecuteTemplate(buffer, "", obj)
+		if err != nil {
+			slog.Error("Error ExecuteTemplate", slog.Any("error", err), slog.String("folder", folder))
+			os.Exit(1)
+		}
+		fragment := strings.ReplaceAll(buffer.String(), " ", "")
+		if fragment == "" {
+			return "", true
+		}
+		fragments[index] = fragment
 	}
-	buffer := bytes.NewBufferString("")
-	err = t.ExecuteTemplate(buffer, "", obj)
-	if err != nil {
-		slog.Error("Error ExecuteTemplate", slog.Any("error", err), slog.String("folder", folder))
-		os.Exit(1)
-	}
-	return strings.ReplaceAll(buffer.String(), " ", "")
+	return filepath.Join(fragments...), false
 }
 
 func Mkdir(path string) {
