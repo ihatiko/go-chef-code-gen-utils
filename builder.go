@@ -129,9 +129,7 @@ func (b *Builder) buildFile(secondPath string, folder string, obj any) {
 	bt := builder.Bytes()
 	if b.MergeMode {
 		file, err := os.ReadFile(filePath)
-		if errors.Is(err, fs.ErrNotExist) {
-			slog.Error("Error reading file", slog.Any("error", err), slog.String("secondPath", secondPath))
-		} else {
+		if !errors.Is(err, fs.ErrNotExist) {
 			ext := filepath.Ext(filePath)
 			if val, ok := b.MergeFn[ext]; ok {
 				bt = val(filePath, bt, file)
