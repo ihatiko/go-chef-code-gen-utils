@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"embed"
 	"errors"
-	"fmt"
 	"io/fs"
 	"log"
 	"log/slog"
@@ -116,7 +115,6 @@ func (b *Builder) buildFile(sPath string, folder string, obj any) {
 		}
 	}
 	parsedPath, _ := strings.CutSuffix(secondPath, ".tmpl")
-	fmt.Println(parsedPath)
 	parsedPath = b.cleanPath(parsedPath)
 
 	newPath, state := b.RewritePath(parsedPath, obj)
