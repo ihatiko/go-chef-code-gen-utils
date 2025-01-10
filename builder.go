@@ -137,10 +137,14 @@ func (b *Builder) buildFile(sPath string, folder string, obj any) {
 	if b.MergeMode {
 		file, err := os.ReadFile(filePath)
 		if !errors.Is(err, fs.ErrNotExist) {
-			ext := filepath.Ext(filePath)
-			if val, ok := b.MergeFn[ext]; ok {
-				bt = val(filePath, bt, file)
-			} else {
+			match := false
+			for key, m := range b.MergeFn {
+				if strings.HasSuffix(filePath, key) {
+					bt = m(filePath, bt, file)
+					match = true
+				}
+			}
+			if !match {
 				if bytes.Contains(file, bt) {
 					return
 				}
