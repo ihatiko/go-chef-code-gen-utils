@@ -30,6 +30,43 @@ func NewBuilder(prefix string, structure embed.FS, mergeMode bool) *Builder {
 func (b *Builder) Build(prefix, destination string, obj any) {
 	b.process(prefix, destination, obj)
 }
+func (b *Builder) Preview(prefix, destination string, obj any) map[string][]byte {
+	result := make(map[string][]byte)
+	b.preview(result, prefix, destination, obj)
+	return result
+}
+func (b *Builder) preview(mp map[string][]byte, prefix, destination string, obj any) {
+	dir, err := b.structure.ReadDir(prefix)
+	if err != nil {
+		log.Fatal(err)
+	}
+	for _, fl := range dir {
+		secondPath := filepath.Join(prefix, fl.Name())
+		if fl.IsDir() {
+			directory := b.cleanPath(secondPath)
+			newDirectory, state := b.RewritePath(directory, obj)
+			if state {
+				continue
+			}
+			if strings.HasSuffix(newDirectory, b.OSSlash("/")) {
+				continue
+			}
+			newDirectoryPath := filepath.Join(destination, newDirectory)
+
+			if b.checkWindows() {
+				secondPath = filepath.ToSlash(secondPath)
+			}
+			b.preview(mp, secondPath, destination, obj)
+			b.CleanEmptyDir(newDirectoryPath)
+			continue
+		}
+
+		file, path := b.previewFile(secondPath, destination, obj)
+		if file != nil {
+			mp[path] = file
+		}
+	}
+}
 func (b *Builder) process(prefix, destination string, obj any) {
 	dir, err := b.structure.ReadDir(prefix)
 	if err != nil {
@@ -94,7 +131,74 @@ func (b *Builder) OSSlash(path string) string {
 	}
 	return path
 }
+func (b *Builder) previewFile(sPath string, folder string, obj any) ([]byte, string) {
+	secondPath := b.OSSlash(sPath)
+	rF, err := b.structure.ReadFile(secondPath)
+	if err != nil {
+		slog.Error("Error reading file", slog.Any("error", err), slog.String("secondPath", secondPath))
+		os.Exit(1)
+	}
+	t, err := template.New("").Parse(string(rF))
+	if err != nil {
+		slog.Error("Error parsing template", slog.Any("error", err), slog.String("secondPath", secondPath))
+		os.Exit(1)
+	}
+	var state bool
+	if strings.HasSuffix(secondPath, "}}") {
+		secondPath, state = b.RewritePath(secondPath, obj)
+		if state {
+			return nil, ""
+		}
+	}
+	parsedPath, _ := strings.CutSuffix(secondPath, ".tmpl")
+	parsedPath = b.cleanPath(parsedPath)
 
+	newPath, state := b.RewritePath(parsedPath, obj)
+	filePath := filepath.Join(
+		folder,
+		newPath,
+	)
+
+	if folder == filePath {
+		return nil, ""
+	}
+	//TODO rewrite
+	builder := bytes.NewBuffer([]byte{})
+	err = t.ExecuteTemplate(builder, "", obj)
+	if err != nil {
+		slog.Error("Error ExecuteTemplate", slog.Any("error", err), slog.String("secondPath", secondPath))
+		os.Exit(1)
+	}
+	bt := builder.Bytes()
+	if b.MergeMode {
+		file, err := os.ReadFile(filePath)
+		if !errors.Is(err, fs.ErrNotExist) {
+			match := false
+			for key, m := range b.MergeFn {
+				if strings.HasSuffix(filePath, key) {
+					bt = m(filePath, bt, file)
+					match = true
+				}
+			}
+			if !match {
+				if bytes.Contains(file, bt) {
+					return nil, ""
+				}
+				file = append(file, "\n"...)
+				file = append(file, bt...)
+				file = append(file, "\n"...)
+				bt = file
+			}
+		}
+	} else {
+		_, err = os.Create(filePath)
+		if err != nil {
+			slog.Error("Error creating file", slog.Any("error", err), slog.String("secondPath", secondPath))
+			os.Exit(1)
+		}
+	}
+	return bt, filePath
+}
 func (b *Builder) buildFile(sPath string, folder string, obj any) {
 	secondPath := b.OSSlash(sPath)
 	rF, err := b.structure.ReadFile(secondPath)
