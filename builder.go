@@ -264,6 +264,7 @@ func (b *Builder) buildFile(sPath string, folder string, obj any) {
 			slog.Error("Error creating file", slog.Any("error", err), slog.String("secondPath", secondPath))
 			os.Exit(1)
 		}
+		slog.Info("Created file", slog.String("path", filePath))
 	}
 	err = os.WriteFile(filePath, bt, os.ModePerm)
 	if err != nil {
